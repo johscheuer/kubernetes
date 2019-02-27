@@ -24,7 +24,7 @@ import (
 	"github.com/pkg/errors"
 
 	apps "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	storage "k8s.io/api/storage/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -301,6 +301,9 @@ func (f *Framework) PatchNamespace(item *string) {
 }
 
 func (f *Framework) patchItemRecursively(item interface{}) error {
+	// ToDo Add image patching to support private registry
+	// ToDo replace old registry with vew one ??
+	// ToDo is imageutils here available?
 	switch item := item.(type) {
 	case *rbac.Subject:
 		f.PatchNamespace(&item.Namespace)

@@ -56,6 +56,8 @@ func (i *Config) SetVersion(version string) {
 }
 
 func initReg() RegistryList {
+	// ToDo add here default registries
+	// ToDo in patch rec. if default reg ist set overwrite with custom reg.
 	registry := RegistryList{
 		DockerLibraryRegistry: "docker.io/library",
 		E2eRegistry:           "gcr.io/kubernetes-e2e-test-images",

@@ -19,13 +19,14 @@ package apps
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	apps "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	klabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -832,37 +833,37 @@ var _ = SIGDescribe("StatefulSet", func() {
 			if CurrentGinkgoTestDescription().Failed {
 				framework.DumpDebugInfo(c, ns)
 			}
-			framework.Logf("Deleting all statefulset in ns %v", ns)
+			framework.Logf("Deleting all statefulsets in ns %v", ns)
 			framework.DeleteAllStatefulSets(c, ns)
 		})
-
-		// Do not mark this as Conformance.
-		// StatefulSet Conformance should not be dependent on specific applications.
-		It("should creating a working zookeeper cluster", func() {
-			appTester.statefulPod = &zookeeperTester{tester: sst}
-			appTester.run()
-		})
-
+		/*
+			// Do not mark this as Conformance.
+			// StatefulSet Conformance should not be dependent on specific applications.
+			It("should creating a working zookeeper cluster", func() {
+				appTester.statefulPod = &zookeeperTester{tester: sst}
+				appTester.run(f)
+			})
+		*/
 		// Do not mark this as Conformance.
 		// StatefulSet Conformance should not be dependent on specific applications.
 		It("should creating a working redis cluster", func() {
 			appTester.statefulPod = &redisTester{tester: sst}
-			appTester.run()
+			appTester.run(f)
 		})
 
 		// Do not mark this as Conformance.
 		// StatefulSet Conformance should not be dependent on specific applications.
 		It("should creating a working mysql cluster", func() {
 			appTester.statefulPod = &mysqlGaleraTester{tester: sst}
-			appTester.run()
+			appTester.run(f)
 		})
-
-		// Do not mark this as Conformance.
-		// StatefulSet Conformance should not be dependent on specific applications.
-		It("should creating a working CockroachDB cluster", func() {
-			appTester.statefulPod = &cockroachDBTester{tester: sst}
-			appTester.run()
-		})
+		/*
+			// Do not mark this as Conformance.
+			// StatefulSet Conformance should not be dependent on specific applications.
+			It("should creating a working CockroachDB cluster", func() {
+				appTester.statefulPod = &cockroachDBTester{tester: sst}
+				appTester.run(f)
+			})*/
 	})
 })
 
@@ -879,7 +880,7 @@ func kubectlExecWithRetries(args ...string) (out string) {
 }
 
 type statefulPodTester interface {
-	deploy(ns string) *apps.StatefulSet
+	deploy(f *framework.Framework, ns string) *apps.StatefulSet
 	write(statefulPodIndex int, kv map[string]string)
 	read(statefulPodIndex int, key string) string
 	name() string
@@ -891,9 +892,9 @@ type clusterAppTester struct {
 	tester      *framework.StatefulSetTester
 }
 
-func (c *clusterAppTester) run() {
+func (c *clusterAppTester) run(f *framework.Framework) {
 	By("Deploying " + c.statefulPod.name())
-	ss := c.statefulPod.deploy(c.ns)
+	ss := c.statefulPod.deploy(f, c.ns)
 
 	By("Creating foo:bar in member with index 0")
 	c.statefulPod.write(0, map[string]string{"foo": "bar"})
@@ -924,8 +925,21 @@ func (z *zookeeperTester) name() string {
 	return "zookeeper"
 }
 
-func (z *zookeeperTester) deploy(ns string) *apps.StatefulSet {
-	z.ss = z.tester.CreateStatefulSet(zookeeperManifestPath, ns)
+func (z *zookeeperTester) deploy(f *framework.Framework, ns string) *apps.StatefulSet {
+	zookeeperManifests := []string{
+		path.Join(zookeeperManifestPath, "/service.yaml"),
+		path.Join(zookeeperManifestPath, "/statefulset.yaml"),
+	}
+
+	// ToDo do we need the clean up
+	_, err := f.CreateFromManifests(nil, zookeeperManifests...)
+	if err != nil {
+		framework.Failf("deploying zookeeper: %v", err)
+	}
+
+	z.ss = z.tester.GetStatefulSet(ns, "zoo")
+	z.tester.WaitForRunningAndReady(*z.ss.Spec.Replicas, z.ss)
+
 	return z.ss
 }
 
@@ -962,8 +976,19 @@ func (m *mysqlGaleraTester) mysqlExec(cmd, ns, podName string) string {
 	return kubectlExecWithRetries(fmt.Sprintf("--namespace=%v", ns), "exec", podName, "--", "/bin/sh", "-c", cmd)
 }
 
-func (m *mysqlGaleraTester) deploy(ns string) *apps.StatefulSet {
-	m.ss = m.tester.CreateStatefulSet(mysqlGaleraManifestPath, ns)
+func (m *mysqlGaleraTester) deploy(f *framework.Framework, ns string) *apps.StatefulSet {
+	mysqlGaleraManifests := []string{
+		path.Join(mysqlGaleraManifestPath, "/service.yaml"),
+		path.Join(mysqlGaleraManifestPath, "/statefulset.yaml"),
+	}
+
+	_, err := f.CreateFromManifests(nil, mysqlGaleraManifests...)
+	if err != nil {
+		framework.Failf("deploying MySQL Galera: %v", err)
+	}
+
+	m.ss = m.tester.GetStatefulSet(ns, "mysql")
+	m.tester.WaitForRunningAndReady(*m.ss.Spec.Replicas, m.ss)
 
 	framework.Logf("Deployed statefulset %v, initializing database", m.ss.Name)
 	for _, cmd := range []string{
@@ -1002,9 +1027,21 @@ func (m *redisTester) redisExec(cmd, ns, podName string) string {
 	return framework.RunKubectlOrDie(fmt.Sprintf("--namespace=%v", ns), "exec", podName, "--", "/bin/sh", "-c", cmd)
 }
 
-func (m *redisTester) deploy(ns string) *apps.StatefulSet {
-	m.ss = m.tester.CreateStatefulSet(redisManifestPath, ns)
-	return m.ss
+func (r *redisTester) deploy(f *framework.Framework, ns string) *apps.StatefulSet {
+	redisManifests := []string{
+		path.Join(redisManifestPath, "/service.yaml"),
+		path.Join(redisManifestPath, "/statefulset.yaml"),
+	}
+
+	_, err := f.CreateFromManifests(nil, redisManifests...)
+	if err != nil {
+		framework.Failf("deploying redis: %v", err)
+	}
+
+	r.ss = r.tester.GetStatefulSet(ns, "redis")
+	r.tester.WaitForRunningAndReady(*r.ss.Spec.Replicas, r.ss)
+
+	return r.ss
 }
 
 func (m *redisTester) write(statefulPodIndex int, kv map[string]string) {
@@ -1033,7 +1070,7 @@ func (c *cockroachDBTester) cockroachDBExec(cmd, ns, podName string) string {
 	return framework.RunKubectlOrDie(fmt.Sprintf("--namespace=%v", ns), "exec", podName, "--", "/bin/sh", "-c", cmd)
 }
 
-func (c *cockroachDBTester) deploy(ns string) *apps.StatefulSet {
+func (c *cockroachDBTester) deploy(f *framework.Framework, ns string) *apps.StatefulSet {
 	c.ss = c.tester.CreateStatefulSet(cockroachDBManifestPath, ns)
 	framework.Logf("Deployed statefulset %v, initializing database", c.ss.Name)
 	for _, cmd := range []string{
