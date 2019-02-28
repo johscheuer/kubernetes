@@ -34,6 +34,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
+
+	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
 // LoadFromManifests loads .yaml or .json manifest files and returns
@@ -300,10 +302,15 @@ func (f *Framework) PatchNamespace(item *string) {
 	}
 }
 
+// PatchContainerImages replaces the specified Container Registry with a custom
+// one provided via the KUBE_TEST_REPO_LIST env variable
+func (f *Framework) PatchContainerImages(containers []v1.Container) {
+	for _, c := range containers {
+		c.Image = imageutils.ReplaceRegistryInImageURL(c.Image)
+	}
+}
+
 func (f *Framework) patchItemRecursively(item interface{}) error {
-	// ToDo Add image patching to support private registry
-	// ToDo replace old registry with vew one ??
-	// ToDo is imageutils here available?
 	switch item := item.(type) {
 	case *rbac.Subject:
 		f.PatchNamespace(&item.Namespace)
@@ -353,8 +360,13 @@ func (f *Framework) patchItemRecursively(item interface{}) error {
 		f.PatchNamespace(&item.ObjectMeta.Namespace)
 	case *apps.StatefulSet:
 		f.PatchNamespace(&item.ObjectMeta.Namespace)
+		f.PatchContainerImages(item.Spec.Template.Spec.Containers)
+		f.PatchContainerImages(item.Spec.Template.Spec.InitContainers)
 	case *apps.DaemonSet:
 		f.PatchNamespace(&item.ObjectMeta.Namespace)
+		f.PatchContainerImages(item.Spec.Template.Spec.Containers)
+		f.PatchContainerImages(item.Spec.Template.Spec.InitContainers)
+		// ToDo currently Deployments are missing
 	default:
 		return errors.Errorf("missing support for patching item of type %T", item)
 	}

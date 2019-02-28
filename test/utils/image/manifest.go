@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -56,8 +57,6 @@ func (i *Config) SetVersion(version string) {
 }
 
 func initReg() RegistryList {
-	// ToDo add here default registries
-	// ToDo in patch rec. if default reg ist set overwrite with custom reg.
 	registry := RegistryList{
 		DockerLibraryRegistry: "docker.io/library",
 		E2eRegistry:           "gcr.io/kubernetes-e2e-test-images",
@@ -149,4 +148,33 @@ func GetE2EImage(image Config) string {
 // GetPauseImageName returns the pause image name with proper version
 func GetPauseImageName() string {
 	return GetE2EImage(Pause)
+}
+
+// ReplaceRegistryInImageURL replaces the registry in the image URL with a custom one
+func ReplaceRegistryInImageURL(imageURL string) string {
+	// ToDo Add Benchmark !!!
+	parts := strings.Split(imageURL, "/")
+	countParts := len(parts)
+	registryAndUser := strings.Join(parts[:countParts-1], "/")
+
+	switch registryAndUser {
+	case "gcr.io/kubernetes-e2e-test-images":
+		registryAndUser = e2eRegistry
+	case "k8s.gcr.io":
+		registryAndUser = gcRegistry
+	case "gcr.io/k8s-authenticated-test":
+		registryAndUser = PrivateRegistry
+	case "gcr.io/google-samples":
+		registryAndUser = sampleRegistry
+	case "docker.io/library":
+		registryAndUser = dockerLibraryRegistry
+	}
+
+	if countParts == 1 {
+		// We assume we found an image from docker hub library
+		// e.g. openjdk -> docker.io/library/openjdk
+		registryAndUser = dockerLibraryRegistry
+	}
+
+	return fmt.Sprintf("%s/%s", registryAndUser, parts[countParts-1])
 }

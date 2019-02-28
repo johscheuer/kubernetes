@@ -843,13 +843,13 @@ var _ = SIGDescribe("StatefulSet", func() {
 				appTester.statefulPod = &zookeeperTester{tester: sst}
 				appTester.run(f)
 			})
-		*/
-		// Do not mark this as Conformance.
-		// StatefulSet Conformance should not be dependent on specific applications.
-		It("should creating a working redis cluster", func() {
-			appTester.statefulPod = &redisTester{tester: sst}
-			appTester.run(f)
-		})
+
+			// Do not mark this as Conformance.
+			// StatefulSet Conformance should not be dependent on specific applications.
+			It("should creating a working redis cluster", func() {
+				appTester.statefulPod = &redisTester{tester: sst}
+				appTester.run(f)
+			})*/
 
 		// Do not mark this as Conformance.
 		// StatefulSet Conformance should not be dependent on specific applications.
@@ -857,13 +857,13 @@ var _ = SIGDescribe("StatefulSet", func() {
 			appTester.statefulPod = &mysqlGaleraTester{tester: sst}
 			appTester.run(f)
 		})
-		/*
-			// Do not mark this as Conformance.
-			// StatefulSet Conformance should not be dependent on specific applications.
-			It("should creating a working CockroachDB cluster", func() {
-				appTester.statefulPod = &cockroachDBTester{tester: sst}
-				appTester.run(f)
-			})*/
+
+		// Do not mark this as Conformance.
+		// StatefulSet Conformance should not be dependent on specific applications.
+		It("should creating a working CockroachDB cluster", func() {
+			appTester.statefulPod = &cockroachDBTester{tester: sst}
+			appTester.run(f)
+		})
 	})
 })
 
@@ -1071,7 +1071,20 @@ func (c *cockroachDBTester) cockroachDBExec(cmd, ns, podName string) string {
 }
 
 func (c *cockroachDBTester) deploy(f *framework.Framework, ns string) *apps.StatefulSet {
-	c.ss = c.tester.CreateStatefulSet(cockroachDBManifestPath, ns)
+	cockroachDBManifests := []string{
+		path.Join(cockroachDBManifestPath, "/service.yaml"),
+		path.Join(cockroachDBManifestPath, "/statefulset.yaml"),
+	}
+
+	_, err := f.CreateFromManifests(nil, cockroachDBManifests...)
+	if err != nil {
+		framework.Failf("deploying %s: %v", c.name(), err)
+	}
+
+	c.ss = c.tester.GetStatefulSet(ns, "cockroachdb")
+	c.tester.WaitForRunningAndReady(*c.ss.Spec.Replicas, c.ss)
+
+	//c.ss = c.tester.CreateStatefulSet(cockroachDBManifestPath, ns)
 	framework.Logf("Deployed statefulset %v, initializing database", c.ss.Name)
 	for _, cmd := range []string{
 		"CREATE DATABASE IF NOT EXISTS foo;",
